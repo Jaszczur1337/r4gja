@@ -2,27 +2,26 @@ package info.androidhive.cardview;
 
 
 import android.app.DownloadManager;
-import android.content.Context;
-import android.net.Uri;
 import android.os.Bundle;
-import android.os.Environment;
 import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
+import android.support.v4.widget.SwipeRefreshLayout;
 import android.support.v7.widget.GridLayoutManager;
 import android.support.v7.widget.RecyclerView;
+import android.util.DisplayMetrics;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
 import android.widget.Toast;
 
+import com.android.volley.Response;
+import com.android.volley.VolleyError;
+import com.android.volley.toolbox.JsonArrayRequest;
+
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -30,13 +29,16 @@ public class LibraryFragment extends Fragment {
 
     long reference;
     private RecyclerView recyclerView;
+    private static final String endpoint = "http://androidtest1.cba.pl/document.json";
     private AlbumsAdapter adapter;
     private List<Album> albumList;
     DownloadManager downloadManager;
+    SwipeRefreshLayout swipeRefreshLayout;
 
     public LibraryFragment() {
 
     }
+
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
@@ -44,14 +46,15 @@ public class LibraryFragment extends Fragment {
     }
 
     @Override
-    public void onViewCreated(View view, @Nullable Bundle savedInstanceState) {
+    public void onViewCreated(final View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
-        Button downloadButton =(Button) view.findViewById(R.id.downloadButton);
 
         recyclerView = (RecyclerView) getView().findViewById(R.id.library);
         albumList = new ArrayList<>();
-        adapter = new AlbumsAdapter(getContext(), albumList);
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        getActivity().getWindowManager().getDefaultDisplay().getRealMetrics(displayMetrics);
+        adapter = new AlbumsAdapter(getContext(), albumList, displayMetrics.widthPixels,false);
 
         RecyclerView.LayoutManager mLayoutManager = new GridLayoutManager(getContext(), 1);
         recyclerView.setLayoutManager(mLayoutManager);
@@ -59,68 +62,50 @@ public class LibraryFragment extends Fragment {
 
         recyclerView.setAdapter(adapter);
 
-        downloadButton.setOnClickListener(new View.OnClickListener() {
+fetchImages();
+
+    }
+
+
+
+
+
+
+    private void fetchImages() {
+
+
+
+        JsonArrayRequest req = new JsonArrayRequest(endpoint,
+                new Response.Listener<JSONArray>() {
+                    @Override
+                    public void onResponse(JSONArray response) {
+
+
+                        albumList.clear();
+                        for (int i = 0; i < response.length(); i++) {
+                            try {
+                                JSONObject object = response.getJSONObject(i);
+                                Album a= new Album(object.getString("title"),object.getString("description"),object.getString("time"),object.getString("city"),object.getString("thumbnailUri"));
+                                albumList.add(a);
+
+                            } catch (JSONException e) {
+                                Toast.makeText(getContext(), "Error:" + e.toString(), Toast.LENGTH_LONG).show();
+                            }
+                        }
+
+                        adapter.notifyDataSetChanged();
+                    }
+                }, new Response.ErrorListener() {
             @Override
-            public void onClick(View v) {
-                reference=DownloadData(Uri.parse("http://androidtest1.cba.pl/document.json"),v);
+            public void onErrorResponse(VolleyError e) {
+                Toast.makeText(getContext(), "Error:" + e.toString(), Toast.LENGTH_LONG).show();
             }
         });
-       ShowData();
 
-
-    }
-    private long DownloadData (Uri uri, View v) {
-
-        long downloadReference;
-
-        // Create request for android download manager
-        downloadManager = (DownloadManager)getContext().getSystemService(Context.DOWNLOAD_SERVICE);
-        DownloadManager.Request request = new DownloadManager.Request(uri);
-
-        //Setting title of request
-        request.setTitle("Data Download");
-
-        //Setting description of request
-        request.setDescription("Android Data download using DownloadManager.");
-
-        request.setDestinationInExternalFilesDir(getContext(), Environment.DIRECTORY_DOWNLOADS,"document");
-
-        //Enqueue download and save into referenceId
-        downloadReference = downloadManager.enqueue(request);
-
-        return downloadReference;
-    }
-    private void ShowData()
-    {
-        StringBuilder text = new StringBuilder();
-
-        try {
-
-            File file = new File( getContext().getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),"document");
-            BufferedReader br = new BufferedReader(new FileReader(file));
-            String line;
-
-            while ((line = br.readLine()) != null) {
-                text.append(line);
-                text.append('\n');
-            }
-            br.close();
-            JSONObject jsonObject = new JSONObject(text.toString());
-            for(int i=0;i<jsonObject.getJSONArray("games").length();i++)
-            {
-                JSONObject gameListObject = jsonObject.getJSONArray("games").getJSONObject(i);
-                Album a = new Album(gameListObject.getString("title"),gameListObject.getString("description"),gameListObject.getString("time"),gameListObject.getString("city"));
-                albumList.add(a);
-
-            }
-            adapter.notifyDataSetChanged();
-
-        }
-        catch (IOException e) {
-            Toast.makeText(getContext(),"Error:"+e.toString(),Toast.LENGTH_LONG).show();
-        } catch (JSONException e) {
-            Toast.makeText(getContext(),"Error:"+e.toString(),Toast.LENGTH_LONG).show();
-        }
+        // Adding request to request queue
+        AppControler.getInstance().addToRequestQueue(req);
     }
 
 }
+
+
